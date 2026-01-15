@@ -1,22 +1,42 @@
+---
+import "../styles/global.css";
+const {
+  title = "BC Real Estate",
+  description = "A structured guide to British Columbia real estate by region.",
+} = Astro.props;
+---
+
 <!doctype html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro Basics</title>
-	</head>
-	<body>
-		<slot />
-	</body>
-</html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+  </head>
 
-<style>
-	html,
-	body {
-		margin: 0;
-		width: 100%;
-		height: 100%;
-	}
-</style>
+  <body>
+    <div class="min-h-screen">
+      <header class="border-b border-slate-200 bg-white">
+        <div class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+          <a href="/" class="font-semibold tracking-tight">BC Real Estate</a>
+
+          <nav class="flex items-center gap-4 text-sm text-slate-600">
+            <a class="hover:text-slate-900" href="/regions">Regions</a>
+          </nav>
+        </div>
+      </header>
+
+      <main class="mx-auto max-w-7xl px-6 py-10">
+  <slot />
+</main>
+
+
+      <footer class="border-t border-slate-200 bg-white">
+        <div class="mx-auto max-w-6xl px-5 py-6 text-sm text-slate-500">
+          © {new Date().getFullYear()} BC Real Estate
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

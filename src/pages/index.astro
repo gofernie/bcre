@@ -1,11 +1,47 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+export const prerender = true;
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+import Layout from "../layouts/Layout.astro";
+import PageHeader from "../components/ui/PageHeader.astro";
+import Card from "../components/ui/Card.astro";
 ---
 
-<Layout>
-	<Welcome />
+<Layout
+  title="BC Real Estate"
+  description="A structured guide to British Columbia real estate by region."
+>
+  <PageHeader
+    title="British Columbia Real Estate"
+    lead="Start with regions. This site is structured to match BC geography - then expands into cities and neighbourhoods."
+  />
+
+  <div class="grid gap-5 lg:grid-cols-3">
+    <Card>
+      <div class="text-sm font-semibold">Start here</div>
+      <p class="mt-2 text-sm text-slate-600">
+        Regions are the top-level structure. Each region will grow into cities,
+        neighbourhoods, and market context.
+      </p>
+      <a
+        href="/regions"
+        class="mt-4 inline-flex items-center rounded-xl border border-slate-200 bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+      >
+        Explore regions
+      </a>
+    </Card>
+
+    <Card>
+      <div class="text-sm font-semibold">What this site is</div>
+      <p class="mt-2 text-sm text-slate-600">
+        A clean, SEO-friendly map of BC real estate - built to scale without becoming messy.
+      </p>
+    </Card>
+
+    <Card>
+      <div class="text-sm font-semibold">What’s coming</div>
+      <p class="mt-2 text-sm text-slate-600">
+        Cities, neighbourhood guides, and listings - added only after the structure is solid.
+      </p>
+    </Card>
+  </div>
 </Layout>
