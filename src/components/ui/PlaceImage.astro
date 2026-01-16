@@ -1,0 +1,67 @@
+---
+type Props = {
+  src?: string;
+  alt: string;
+  aspect?: "standard"; // only exception
+  fallbackText?: string;
+  class?: string;
+};
+
+const {
+  src = "",
+  alt,
+  aspect,
+  fallbackText = "Image coming soon",
+  class: className = "",
+} = Astro.props as Props;
+
+const cleanSrc = String(src ?? "").trim();
+
+const ratioClass = aspect === "standard" ? "aspect-[4/3]" : "aspect-[21/9]";
+const heightClamp =
+  aspect === "standard" ? "" : "max-h-[260px] sm:max-h-[320px] lg:max-h-[380px]";
+
+const hasUsableSrc =
+  !!cleanSrc &&
+  (cleanSrc.startsWith("http://") ||
+    cleanSrc.startsWith("https://") ||
+    cleanSrc.startsWith("/"));
+---
+
+<style is:global>
+  [data-placeimage].img-error img { display: none; }
+  [data-placeimage].img-error .placeimage-fallback { display: grid; }
+</style>
+
+{hasUsableSrc ? (
+  <figure class={`mt-5 ${className}`}>
+    <div
+      data-placeimage
+      class={`relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 ${ratioClass} ${heightClamp}`}
+    >
+      <img
+        src={cleanSrc}
+        alt={alt}
+        loading="eager"
+        decoding="async"
+        class="absolute inset-0 h-full w-full object-cover object-center"
+        onerror="this.closest('[data-placeimage]')?.classList.add('img-error')"
+      />
+
+      <div class="placeimage-fallback absolute inset-0 hidden w-full place-items-center text-sm text-slate-500">
+        {fallbackText}
+      </div>
+
+      <div class="pointer-events-none absolute inset-0 bg-white/0"></div>
+      <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-slate-900/5"></div>
+    </div>
+  </figure>
+) : (
+  <div class={`mt-5 ${className}`}>
+    <div
+      class={`grid w-full place-items-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500 ${ratioClass} ${heightClamp}`}
+    >
+      {fallbackText}
+    </div>
+  </div>
+)}

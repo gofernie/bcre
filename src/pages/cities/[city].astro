@@ -1,0 +1,275 @@
+---
+export const prerender = true;
+
+import Layout from "../../layouts/Layout.astro";
+import PageHeader from "../../components/ui/PageHeader.astro";
+import Card from "../../components/ui/Card.astro";
+import StatCard from "../../components/ui/StatCard.astro";
+import PlaceImage from "../../components/ui/PlaceImage.astro";
+
+/* ---------------- accents ---------------- */
+const ACCENTS = {
+  kootenays: { a: "#10b981", a200: "#a7f3d0", a50: "#ecfdf5", a800: "#065f46" },
+  okanagan: { a: "#f59e0b", a200: "#fde68a", a50: "#fffbeb", a800: "#92400e" },
+  "lower-mainland": { a: "#0ea5e9", a200: "#bae6fd", a50: "#f0f9ff", a800: "#075985" },
+  "vancouver-island": { a: "#14b8a6", a200: "#99f6e4", a50: "#f0fdfa", a800: "#115e59" },
+  "northern-bc": { a: "#6366f1", a200: "#c7d2fe", a50: "#eef2ff", a800: "#3730a3" },
+  "thompson-nicola": { a: "#8b5cf6", a200: "#ddd6fe", a50: "#f5f3ff", a800: "#5b21b6" },
+  cariboo: { a: "#f43f5e", a200: "#fecdd3", a50: "#fff1f2", a800: "#9f1239" },
+};
+const FALLBACK_ACCENT = ACCENTS["lower-mainland"];
+
+/* ---------------- tiny helpers ---------------- */
+const s = (v: any) => String(v ?? "").trim();
+const norm = (v: any) => s(v).toLowerCase();
+
+async function getJson(u: string) {
+  const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+  return await res.json();
+}
+
+function toArray(raw: any) {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.data)) return raw.data;
+  if (Array.isArray(raw?.rows)) return raw.rows;
+  return [];
+}
+
+/* ---------------- static paths (CITIES sheet) ---------------- */
+export async function getStaticPaths() {
+  const url = import.meta.env.PUBLIC_CITIES_JSON;
+  if (!url) return [];
+
+  const s2 = (v: any) => String(v ?? "").trim();
+  const norm2 = (v: any) => s2(v).toLowerCase();
+
+  async function getJson2(u: string) {
+    const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+    return await res.json();
+  }
+
+  function toArray2(raw: any) {
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw?.data)) return raw.data;
+    if (Array.isArray(raw?.rows)) return raw.rows;
+    return [];
+  }
+
+  try {
+    const raw = await getJson2(url);
+    const rows = toArray2(raw);
+
+    return rows
+      .filter((r: any) => norm2(r?.status) === "published")
+      .map((r: any) => {
+        const citySlug = s2(r?.city_slug ?? r?.slug ?? r?.Slug);
+
+        return {
+          params: { city: norm2(citySlug) },
+          props: {
+            city_name: s2(r?.city_name),
+            city_slug: citySlug,
+            subtitle: s2(r?.subtitle),
+            intro: s2(r?.intro),
+            region_slug: s2(r?.region_slug),
+            region_name: s2(r?.region_name),
+            hero: s2(r?.hero),
+          },
+        };
+      })
+      .filter((p: any) => p.params.city && p.props.city_slug);
+  } catch {
+    return [];
+  }
+}
+
+/* ---------------- page data ---------------- */
+const { city } = Astro.params as { city: string };
+
+const {
+  city_name,
+  city_slug,
+  subtitle,
+  intro,
+  region_slug,
+  region_name,
+  hero,
+} = Astro.props as {
+  city_name?: string;
+  city_slug?: string;
+  subtitle?: string;
+  intro?: string;
+  region_slug?: string;
+  region_name?: string;
+  hero?: string;
+};
+
+const cityPretty =
+  city_name ||
+  String(city_slug || city)
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+const regionSlug = s(region_slug);
+const regionPretty =
+  region_name ||
+  (regionSlug
+    ? regionSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "BC");
+
+const accent = ACCENTS[norm(regionSlug)] ?? FALLBACK_ACCENT;
+
+const accentStyle = `
+  --accent:${accent.a};
+  --accent-200:${accent.a200};
+  --accent-50:${accent.a50};
+  --accent-800:${accent.a800};
+`;
+
+const pills = [
+  { label: "Overview", href: "#overview" },
+  { label: "Listings", href: "#listings" },
+  { label: "What’s next", href: "#next" },
+];
+---
+
+<style is:global>
+  .accent-dot { background: var(--accent); }
+  .accent-hover:hover { border-color: var(--accent-200); }
+  .accent-pill {
+    border-color: var(--accent-200);
+    background: var(--accent-50);
+    color: var(--accent-800);
+  }
+</style>
+
+<Layout
+  title={`${cityPretty} Real Estate - ${regionPretty}`}
+  description={intro || `Browse ${cityPretty} real estate in ${regionPretty}.`}
+>
+  {/* ✅ No mx-auto, no max-w-* here. Layout controls width. */}
+  <div style={accentStyle} class="w-full py-10">
+
+    {/* breadcrumb + top-right helper */}
+    <div class="-mt-4 mb-5 flex items-start justify-between gap-6 text-sm text-slate-500">
+      <div class="min-w-0">
+        <a href="/" class="hover:text-slate-900">Home</a>
+        <span class="mx-2">/</span>
+        <a href="/regions" class="hover:text-slate-900">Regions</a>
+        {regionSlug ? (
+          <>
+            <span class="mx-2">/</span>
+            <a href={`/regions/${regionSlug}`} class="hover:text-slate-900">
+              {regionPretty}
+            </a>
+          </>
+        ) : null}
+        <span class="mx-2">/</span>
+        <span class="text-slate-900">{cityPretty}</span>
+      </div>
+
+      <a
+        href="/contact"
+        class="group shrink-0 whitespace-nowrap text-sm text-slate-500 transition hover:text-slate-900"
+      >
+        <span class="inline-flex items-center gap-2">
+          <span class="h-1.5 w-1.5 rounded-full opacity-80" style="background: var(--accent)"></span>
+          <span>Need help in {cityPretty}?</span>
+          <span class="text-slate-400 transition group-hover:translate-x-0.5" style="color: var(--accent)">›</span>
+        </span>
+      </a>
+    </div>
+
+    <PageHeader
+      title={cityPretty}
+      lead={subtitle || `City hub page for ${regionPretty} real estate.`}
+    />
+
+    <PlaceImage
+      src={s(hero)}
+      alt={`${cityPretty}, British Columbia`}
+      fallbackText={`Photo of ${cityPretty} coming soon`}
+    />
+
+    {/* pills */}
+    <div class="my-6 flex flex-wrap gap-2">
+      {pills.map((p) => (
+        <a
+          href={p.href}
+          class="accent-hover inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition hover:text-slate-900"
+        >
+          <span class="accent-dot h-1.5 w-1.5 rounded-full"></span>
+          {p.label}
+        </a>
+      ))}
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-12">
+      {/* LEFT */}
+      <aside class="lg:col-span-4 lg:sticky lg:top-8 space-y-6">
+        <div class="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600">
+          <span class="accent-dot h-2 w-2 rounded-full"></span>
+          Locked
+        </div>
+
+        <a href="#overview" class="block accent-hover rounded-2xl">
+          <StatCard label="Overview" value="—" hint="Start here ›" />
+        </a>
+
+        <a href="#listings" class="block accent-hover rounded-2xl">
+          <StatCard label="Listings" value="—" hint="Attach last" />
+        </a>
+
+        {regionSlug ? (
+          <a href={`/regions/${regionSlug}`} class="block accent-hover rounded-2xl">
+            <StatCard label="Region" value={regionPretty} hint="Back to region hub ›" />
+          </a>
+        ) : (
+          <StatCard label="Region" value="—" hint="Missing region_slug" />
+        )}
+      </aside>
+
+      {/* RIGHT */}
+      <main class="lg:col-span-8 space-y-6">
+        <Card id="overview">
+          <div class="text-sm font-semibold text-slate-900">Overview</div>
+          <p class="mt-2 text-sm text-slate-600">
+            {intro || `Use this page to get oriented. Listings wiring comes next for bc.realestate.`}
+          </p>
+
+          {regionSlug ? (
+            <div class="mt-4">
+              <a
+                href={`/regions/${regionSlug}`}
+                class="accent-hover inline-flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:text-slate-900"
+              >
+                <span>Back to {regionPretty}</span>
+                <span class="text-slate-400">›</span>
+              </a>
+            </div>
+          ) : null}
+        </Card>
+
+        <Card id="listings">
+          <div class="text-sm font-semibold text-slate-900">Listings</div>
+
+          <div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+            <div class="font-semibold text-slate-900">Listings coming soon</div>
+            <div class="mt-1 text-sm text-slate-600">
+              This page is live to establish the BC geography structure (region - city). Inventory embeds get added next.
+            </div>
+          </div>
+        </Card>
+
+        <Card id="next">
+          <div class="text-sm font-semibold text-slate-900">What’s next</div>
+          <p class="mt-2 text-sm text-slate-600">
+            Neighbourhood hubs - market context - listings embeds - then internal linking.
+          </p>
+        </Card>
+      </main>
+    </div>
+  </div>
+</Layout>

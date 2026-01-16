@@ -1,0 +1,259 @@
+---
+export const prerender = true;
+
+import Layout from "../../layouts/Layout.astro";
+import PageHeader from "../../components/ui/PageHeader.astro";
+import Card from "../../components/ui/Card.astro";
+import StatCard from "../../components/ui/StatCard.astro";
+import PlaceImage from "../../components/ui/PlaceImage.astro";
+
+/* ---------------- accents ---------------- */
+const ACCENTS = {
+  kootenays: { a: "#10b981", a200: "#a7f3d0", a50: "#ecfdf5", a800: "#065f46" },
+  okanagan: { a: "#f59e0b", a200: "#fde68a", a50: "#fffbeb", a800: "#92400e" },
+  "lower-mainland": { a: "#0ea5e9", a200: "#bae6fd", a50: "#f0f9ff", a800: "#075985" },
+  "vancouver-island": { a: "#14b8a6", a200: "#99f6e4", a50: "#f0fdfa", a800: "#115e59" },
+  "northern-bc": { a: "#6366f1", a200: "#c7d2fe", a50: "#eef2ff", a800: "#3730a3" },
+  "thompson-nicola": { a: "#8b5cf6", a200: "#ddd6fe", a50: "#f5f3ff", a800: "#5b21b6" },
+  cariboo: { a: "#f43f5e", a200: "#fecdd3", a50: "#fff1f2", a800: "#9f1239" },
+};
+
+const FALLBACK_ACCENT = ACCENTS["lower-mainland"];
+
+/* ---------------- tiny helpers ---------------- */
+const s = (v: any) => String(v ?? "").trim();
+const norm = (v: any) => s(v).toLowerCase();
+
+async function getJson(u: string) {
+  const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+  return await res.json();
+}
+
+function toArray(raw: any) {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.data)) return raw.data;
+  if (Array.isArray(raw?.rows)) return raw.rows;
+  return [];
+}
+
+/* ---------------- static paths (REGIONS sheet) ---------------- */
+export async function getStaticPaths() {
+  const url = import.meta.env.PUBLIC_REGIONS_JSON;
+  if (!url) return [];
+
+  const s2 = (v: any) => String(v ?? "").trim();
+  const norm2 = (v: any) => s2(v).toLowerCase();
+
+  async function getJson2(u: string) {
+    const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+    return await res.json();
+  }
+
+  function toArray2(raw: any) {
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw?.data)) return raw.data;
+    if (Array.isArray(raw?.rows)) return raw.rows;
+    return [];
+  }
+
+  try {
+    const raw = await getJson2(url);
+    const rows = toArray2(raw);
+
+    return rows
+      .filter((r: any) => norm2(r?.status) === "published")
+      .map((r: any) => ({
+        params: { region: s2(r?.region_slug) },
+        props: {
+          name: s2(r?.region_name),
+          subtitle: s2(r?.subtitle),
+          intro: s2(r?.intro),
+          hero: s2(r?.hero),
+        },
+      }))
+      .filter((p: any) => p.params.region && p.props.name);
+  } catch {
+    return [];
+  }
+}
+
+/* ---------------- page data ---------------- */
+const { region } = Astro.params as { region: string };
+const { name, subtitle, intro, hero } = Astro.props as {
+  name?: string;
+  subtitle?: string;
+  intro?: string;
+  hero?: string;
+};
+
+const pretty =
+  name ??
+  String(region)
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+const accent = ACCENTS[String(region)] ?? FALLBACK_ACCENT;
+
+const accentStyle = `
+  --accent:${accent.a};
+  --accent-200:${accent.a200};
+  --accent-50:${accent.a50};
+  --accent-800:${accent.a800};
+`;
+
+const pills = [
+  { label: "City hubs", href: "#cities" },
+  { label: "Market context", href: "#overview" },
+  { label: "What’s next", href: "#next" },
+];
+
+/* ---------------- load CITIES for this region ---------------- */
+const CITIES_URL = import.meta.env.PUBLIC_CITIES_JSON as string | undefined;
+
+let cities: { slug: string; name: string; subtitle: string }[] = [];
+if (CITIES_URL) {
+  try {
+    const raw = await getJson(CITIES_URL);
+    const rows = toArray(raw);
+
+    cities = rows
+      .filter((r: any) => norm(r?.status) === "published")
+      .filter((r: any) => norm(r?.region_slug) === norm(region))
+      .map((r: any) => ({
+        slug: s(r?.city_slug),
+        name: s(r?.city_name),
+        subtitle: s(r?.subtitle),
+      }))
+      .filter((c) => c.slug && c.name);
+  } catch {
+    cities = [];
+  }
+}
+
+const cityCount = cities.length;
+---
+
+<style is:global>
+  .accent-dot { background: var(--accent); }
+  .accent-hover:hover { border-color: var(--accent-200); }
+  .accent-pill {
+    border-color: var(--accent-200);
+    background: var(--accent-50);
+    color: var(--accent-800);
+  }
+</style>
+
+<Layout
+  title={`${pretty} Real Estate`}
+  description={`Explore ${pretty} real estate by city and neighbourhood.`}
+>
+  <div style={accentStyle} class="w-full py-10">
+    <div class="-mt-4 mb-5 flex items-start justify-between gap-6 text-sm text-slate-500">
+      <div class="min-w-0">
+        <a href="/" class="hover:text-slate-900">Home</a>
+        <span class="mx-2">/</span>
+        <a href="/regions" class="hover:text-slate-900">Regions</a>
+        <span class="mx-2">/</span>
+        <span class="text-slate-900">{pretty}</span>
+      </div>
+
+      <a
+        href="/contact"
+        class="group shrink-0 whitespace-nowrap text-sm text-slate-500 transition hover:text-slate-900"
+      >
+        <span class="inline-flex items-center gap-2">
+          <span class="h-1.5 w-1.5 rounded-full opacity-80" style="background: var(--accent)"></span>
+          <span>Need help in {pretty}?</span>
+          <span class="text-slate-400 transition group-hover:translate-x-0.5" style="color: var(--accent)">›</span>
+        </span>
+      </a>
+    </div>
+
+    <PageHeader title={pretty} lead={subtitle || "Region hub page for BC real estate."} />
+
+    <PlaceImage
+      src={s(hero)}
+      alt={`${pretty}, British Columbia`}
+      fallbackText={`Photo of ${pretty} coming soon`}
+    />
+
+    <div class="my-6 flex flex-wrap gap-2">
+      {pills.map((p) => (
+        <a
+          href={p.href}
+          class="accent-hover inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition hover:text-slate-900"
+        >
+          <span class="accent-dot h-1.5 w-1.5 rounded-full"></span>
+          {p.label}
+        </a>
+      ))}
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-12">
+      <aside class="lg:col-span-4 lg:sticky lg:top-8 space-y-6">
+        <div class="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600">
+          <span class="accent-dot h-2 w-2 rounded-full"></span>
+          Locked
+        </div>
+
+        <a href="#cities" class="block accent-hover rounded-2xl">
+          <StatCard
+            label="Cities"
+            value={cityCount ? String(cityCount) : "—"}
+            hint={cityCount ? "View city hubs ›" : "Coming soon"}
+          />
+        </a>
+
+        <a href="#overview" class="block accent-hover rounded-2xl">
+          <StatCard label="Market context" value="—" hint="Add stats later" />
+        </a>
+
+        <StatCard label="Listings" value="—" hint="Attach last" />
+      </aside>
+
+      <main class="lg:col-span-8 space-y-6">
+        <Card id="overview">
+          <div class="text-sm font-semibold text-slate-900">Overview</div>
+          <p class="mt-2 text-sm text-slate-600">
+            {intro || "This page establishes the region before drilling into cities."}
+          </p>
+        </Card>
+
+        <Card id="cities">
+          <div class="text-sm font-semibold text-slate-900">Cities in {pretty}</div>
+
+          {cityCount ? (
+            <div class="mt-5 grid gap-3 sm:grid-cols-2">
+              {cities.map((c) => (
+                <a
+                  href={`/cities/${c.slug}`}
+                  class="accent-hover block rounded-xl border border-slate-200 bg-white p-4 transition"
+                  title={`View ${c.name}`}
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-semibold text-slate-900">{c.name}</div>
+                      <div class="mt-1 text-sm text-slate-600">{c.subtitle || "City hub"}</div>
+                    </div>
+                    <span class="text-slate-400">›</span>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div class="mt-5 text-sm text-slate-600">No cities found.</div>
+          )}
+        </Card>
+
+        <Card id="next">
+          <div class="text-sm font-semibold text-slate-900">What’s next</div>
+          <p class="mt-2 text-sm text-slate-600">
+            Cities - neighbourhood hubs - market context - listings.
+          </p>
+        </Card>
+      </main>
+    </div>
+  </div>
+</Layout>

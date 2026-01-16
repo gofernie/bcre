@@ -1,0 +1,27 @@
+---
+export const prerender = false;
+
+async function getJson(url) {
+  const res = await fetch(url, { headers: { accept: "application/json,text/plain,*/*" } });
+  const text = await res.text();
+  return { ok: res.ok, status: res.status, text: text.slice(0, 1500) };
+}
+
+const regionsUrl = import.meta.env.PUBLIC_REGIONS_JSON;
+const citiesUrl = import.meta.env.PUBLIC_CITIES_JSON;
+
+const regions = regionsUrl ? await getJson(regionsUrl) : { ok: false, status: 0, text: "NO PUBLIC_REGIONS_JSON" };
+const cities = citiesUrl ? await getJson(citiesUrl) : { ok: false, status: 0, text: "NO PUBLIC_CITIES_JSON" };
+---
+
+<h1>CMS DEBUG</h1>
+
+<h2>PUBLIC_REGIONS_JSON</h2>
+<p><b>URL:</b> {regionsUrl}</p>
+<p><b>Status:</b> {regions.status}</p>
+<pre>{regions.text}</pre>
+
+<h2>PUBLIC_CITIES_JSON</h2>
+<p><b>URL:</b> {citiesUrl}</p>
+<p><b>Status:</b> {cities.status}</p>
+<pre>{cities.text}</pre>

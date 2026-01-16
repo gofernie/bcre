@@ -1,0 +1,35 @@
+---
+export const prerender = false;
+
+async function getJson(url: string) {
+  const res = await fetch(url, { headers: { accept: "application/json,text/plain,*/*" } });
+  const text = await res.text();
+  return { ok: res.ok, status: res.status, text: text.slice(0, 2000) };
+}
+
+const regionsUrl = import.meta.env.PUBLIC_REGIONS_JSON;
+const citiesUrl = import.meta.env.PUBLIC_CITIES_JSON;
+
+const regions = regionsUrl ? await getJson(regionsUrl) : { ok: false, status: 0, text: "NO PUBLIC_REGIONS_JSON" };
+const cities = citiesUrl ? await getJson(citiesUrl) : { ok: false, status: 0, text: "NO PUBLIC_CITIES_JSON" };
+---
+
+<html>
+  <body style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; padding: 16px;">
+    <h1>CMS Debug</h1>
+
+    <h2>PUBLIC_REGIONS_JSON</h2>
+    <div><b>URL:</b> {String(regionsUrl ?? "MISSING")}</div>
+    <div><b>Status:</b> {regions.status} ({regions.ok ? "OK" : "FAIL"})</div>
+    <pre style="white-space: pre-wrap; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:12px;">
+{regions.text}
+    </pre>
+
+    <h2>PUBLIC_CITIES_JSON</h2>
+    <div><b>URL:</b> {String(citiesUrl ?? "MISSING")}</div>
+    <div><b>Status:</b> {cities.status} ({cities.ok ? "OK" : "FAIL"})</div>
+    <pre style="white-space: pre-wrap; background:#f8fafc; padding:12px; border:1px solid #e2e8f0; border-radius:12px;">
+{cities.text}
+    </pre>
+  </body>
+</html>

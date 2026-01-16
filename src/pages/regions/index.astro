@@ -1,0 +1,254 @@
+---
+export const prerender = true;
+
+import Site from "../../layouts/Layout.astro";
+import PageHeader from "../../components/ui/PageHeader.astro";
+
+const pageTitle = "BC Real Estate Regions";
+const seoTitle = pageTitle;
+const seoDesc =
+  "Start with regions. This site is structured to match BC geography - then expands into cities and neighbourhoods.";
+
+const USE_LEFT_RAIL = false;
+
+const chips = [
+  { href: "#regions", label: "Region hubs" },
+  { href: "#expands", label: "How this expands" },
+  { href: "#next", label: "What's next" },
+];
+
+/* ---------- fetch helpers ---------- */
+async function getJson<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+  return (await res.json()) as T;
+}
+
+function toArray(raw: any): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.data)) return raw.data;
+  if (Array.isArray(raw?.rows)) return raw.rows;
+  return [];
+}
+
+function s(v: any): string {
+  return String(v ?? "").trim();
+}
+
+function norm(v: any): string {
+  return s(v).toLowerCase();
+}
+
+/* ---------- load regions from Sheets ---------- */
+const url = import.meta.env.PUBLIC_REGIONS_JSON as string | undefined;
+
+let regions: {
+  slug: string;
+  name: string;
+  desc: string;
+  intro?: string;
+  hero?: string;
+  dotClass: string;
+  meta: string;
+}[] = [];
+
+if (url) {
+  try {
+    const raw = await getJson<any>(url);
+    const rows = toArray(raw);
+
+    regions = rows
+      .filter((r: any) => norm(r.status) === "published")
+      .map((r: any) => {
+        const slug = s(r.region_slug);
+        const name = s(r.region_name);
+        const desc = s(r.subtitle);
+        const intro = s(r.intro);
+        const hero = s(r.hero);
+
+        const dotMap: Record<string, string> = {
+          kootenays: "bg-emerald-500",
+          okanagan: "bg-amber-500",
+          "lower-mainland": "bg-sky-500",
+          "vancouver-island": "bg-emerald-500",
+          "thompson-nicola": "bg-indigo-500",
+          cariboo: "bg-rose-500",
+        };
+
+        return {
+          slug,
+          name,
+          desc,
+          intro,
+          hero,
+          dotClass: dotMap[slug] ?? "bg-sky-500",
+          meta: "Region hub",
+        };
+      })
+      .filter((r) => r.slug && r.name);
+  } catch {
+    regions = [];
+  }
+}
+---
+
+<Site title={seoTitle} description={seoDesc}>
+  {/* ✅ No mx-auto, no max-w-* here. Layout controls width. */}
+  <main class="w-full pb-16 pt-10">
+    {/* breadcrumb (city-style placement) */}
+    <div class="-mt-4 mb-5 flex items-start justify-between gap-6 text-sm text-slate-500">
+      <div class="min-w-0">
+        <a href="/" class="hover:text-slate-900">Home</a>
+        <span class="mx-2">/</span>
+        <span class="text-slate-900">Regions</span>
+      </div>
+
+      {/* spacer to match city-page rhythm */}
+      <div class="shrink-0 select-none opacity-0">Need help?</div>
+    </div>
+
+    {/* ✅ Constrain only intro text, not whole page width */}
+    <div class="max-w-3xl">
+      <PageHeader
+        title={pageTitle}
+        lead="Start with regions. This site is structured to match BC geography - then expands into cities and neighbourhoods."
+      />
+
+      {/* chips */}
+      <div class="mt-6 flex flex-wrap gap-2">
+        {chips.map((c) => (
+          <a
+            href={c.href}
+            class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
+          >
+            <span class="h-2 w-2 rounded-full bg-sky-500" />
+            <span>{c.label}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+
+    <div class={`mt-10 ${USE_LEFT_RAIL ? "grid gap-8 lg:grid-cols-[280px,1fr]" : ""}`}>
+      {USE_LEFT_RAIL ? (
+        <aside class="lg:sticky lg:top-6 lg:self-start">
+          <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-100 p-5">
+              <div class="text-xs font-semibold tracking-wider text-slate-500">EXPLORER</div>
+              <div class="mt-2 text-lg font-semibold text-slate-900">Regions</div>
+              <p class="mt-2 text-sm text-slate-600">
+                Pick a region to open its hub page. Cities and neighbourhoods plug in later.
+              </p>
+            </div>
+
+            <div class="p-5">
+              <div class="text-xs font-semibold tracking-wider text-slate-500">JUMP</div>
+              <div class="mt-3 grid gap-2">
+                <a
+                  href="#regions"
+                  class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm hover:border-slate-300 hover:text-slate-900"
+                >
+                  Regions
+                </a>
+                <a
+                  href="#expands"
+                  class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm hover:border-slate-300 hover:text-slate-900"
+                >
+                  How this expands
+                </a>
+                <a
+                  href="#next"
+                  class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm hover:border-slate-300 hover:text-slate-900"
+                >
+                  What's next
+                </a>
+              </div>
+            </div>
+          </div>
+        </aside>
+      ) : null}
+
+      <section class="min-w-0">
+        <div id="regions" class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-semibold text-slate-900">Regions</div>
+            <div class="mt-1 text-sm text-slate-600">
+              Pick a region to open its hub page. Cities and neighbourhoods plug in later.
+            </div>
+          </div>
+
+          <div class="hidden items-center gap-2 text-sm text-slate-600 sm:flex">
+            <span class="h-2 w-2 rounded-full bg-sky-500"></span>
+            <span>Hub pages</span>
+          </div>
+        </div>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-3">
+          {regions.map((r) => (
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-base font-semibold text-slate-900">{r.name}</div>
+                  <p class="mt-2 text-sm text-slate-600">{r.desc}</p>
+                </div>
+
+                <a
+                  href={`/regions/${r.slug}`}
+                  class="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
+                >
+                  View
+                </a>
+              </div>
+
+              <div class="mt-4 flex items-center gap-2 text-xs text-slate-600">
+                <span class={`h-2 w-2 rounded-full ${r.dotClass}`}></span>
+                <span>{r.meta}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div id="expands" class="mt-8 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div class="border-b border-slate-100 p-5">
+            <div class="text-sm font-semibold text-slate-900">How this expands</div>
+            <p class="mt-1 text-sm text-slate-600">
+              The structure stays stable so the site can grow without getting messy.
+            </p>
+          </div>
+
+          <div class="grid gap-4 p-5 md:grid-cols-3">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div class="text-xs font-semibold tracking-wider text-slate-500">STEP 1</div>
+              <div class="mt-2 text-sm font-semibold text-slate-900">Region hubs</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div class="text-xs font-semibold tracking-wider text-slate-500">STEP 2</div>
+              <div class="mt-2 text-sm font-semibold text-slate-900">City hubs</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div class="text-xs font-semibold tracking-wider text-slate-500">STEP 3</div>
+              <div class="mt-2 text-sm font-semibold text-slate-900">Neighbourhoods</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="next" class="mt-8 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div class="flex items-center justify-between gap-4 border-b border-slate-100 p-5">
+            <div>
+              <div class="text-sm font-semibold text-slate-900">What's next</div>
+              <p class="mt-1 text-sm text-slate-600">
+                Once the region hierarchy is stable, we add cities, then neighbourhood hubs, then listings.
+              </p>
+            </div>
+
+            <a
+              href="/"
+              class="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
+            >
+              Back home
+            </a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</Site>
