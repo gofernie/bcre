@@ -1,6 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* optional: tell Tailwind where to scan (safe to keep) */
+@source "../**/*.{astro,html,js,jsx,ts,tsx,md,mdx}";
 
 html,
 body {
