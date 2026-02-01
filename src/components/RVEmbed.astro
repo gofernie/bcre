@@ -1,0 +1,114 @@
+---
+// File: src/components/RVEmbed.astro
+const {
+  block,
+  minHeight = "580px",
+  showSkeleton = true,
+} = Astro.props as {
+  block: string;
+  minHeight?: string;
+  showSkeleton?: boolean;
+};
+
+const safeBlock = String(block ?? "").trim();
+const id = `rv-${safeBlock.replace(/[^a-z0-9-]/gi, "").toLowerCase()}`;
+---
+
+<div class="rv-embed" style={`min-height:${minHeight};`}>
+  {showSkeleton ? <div class="rv-skel" aria-hidden="true"></div> : null}
+
+  <div id={id} data-rv-block={safeBlock}></div>
+
+  <script is:inline>
+    (() => {
+      const SRC = "https://cdn.realtyvis.com/js/embed.js";
+      const SCRIPT_ID = "rv-embed-js";
+
+      function loadScriptOnce() {
+        return new Promise((resolve, reject) => {
+          const existing = document.getElementById(SCRIPT_ID);
+
+          if (existing) {
+            if (existing.dataset && existing.dataset.loaded === "1") return resolve(true);
+            existing.addEventListener("load", () => resolve(true), { once: true });
+            existing.addEventListener("error", reject, { once: true });
+            return;
+          }
+
+          const s = document.createElement("script");
+          s.id = SCRIPT_ID;
+          s.src = SRC;
+          s.async = true;
+
+          s.addEventListener(
+            "load",
+            () => {
+              if (s.dataset) s.dataset.loaded = "1";
+              resolve(true);
+            },
+            { once: true }
+          );
+
+          s.addEventListener("error", reject, { once: true });
+          document.body.appendChild(s);
+        });
+      }
+
+      function tryReinit() {
+        const w = window;
+
+        // Different embeds expose different globals - harmless to try
+        const fns = [
+          () => w?.RealtyVis?.embed?.init?.(),
+          () => w?.RealtyVis?.embed?.refresh?.(),
+          () => w?.RealtyVis?.init?.(),
+          () => w?.RVEmbed?.init?.(),
+          () => w?.rv?.init?.(),
+        ];
+
+        for (const fn of fns) {
+          try {
+            fn();
+            break;
+          } catch {}
+        }
+      }
+
+      loadScriptOnce()
+        .then(() => {
+          // If the script scans on load, this is a no-op
+          tryReinit();
+        })
+        .catch(() => {
+          // silent fail - your page-level fallback link handles UX
+        });
+    })();
+  </script>
+</div>
+
+<style>
+  .rv-embed{
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid rgba(226,232,240,.9);
+    background: #fff;
+  }
+
+  .rv-skel{
+    position:absolute;
+    inset:0;
+    background: linear-gradient(90deg, rgba(15,23,42,.04), rgba(15,23,42,.02), rgba(15,23,42,.04));
+    background-size: 200% 100%;
+    animation: rvshine 1.2s ease-in-out infinite;
+  }
+
+  @keyframes rvshine{
+    0%{ background-position: 200% 0; }
+    100%{ background-position: -200% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .rv-skel{ animation: none; }
+  }
+</style>

@@ -1,9 +1,15 @@
 ---
-const { as = "div" } = Astro.props;
+const { as = "div", class: className, ...rest } = Astro.props;
 const Tag = as;
 ---
 
-<Tag class="rounded-2xl border border-slate-200 bg-white">
+<Tag
+  {...rest}
+  class:list={[
+    "rounded-2xl border border-slate-200 bg-white",
+    className,
+  ]}
+>
   <div class="p-6">
     <slot />
   </div>

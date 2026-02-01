@@ -1,0 +1,290 @@
+---
+// File: src/pages/cities/[city]/[type].astro
+export const prerender = true;
+
+import Layout from "../../../layouts/Layout.astro";
+import PageHeader from "../../../components/ui/PageHeader.astro";
+import Card from "../../../components/ui/Card.astro";
+import CrumbsBar from "../../../components/ui/CrumbsBar.astro";
+import RVEmbed from "../../../components/RVEmbed.astro";
+
+import { buildMetaDescription, leadFrom } from "../../../lib/seo";
+
+/* ---------------- helpers (page scope) ---------------- */
+const s = (v: any) => String(v ?? "").trim();
+const slugify = (v: any) =>
+  String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const titleCaseFromSlug = (slug: string) =>
+  slug
+    .split("-")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+/* ---------------- listing types (page scope) ---------------- */
+const TYPES = [
+  { slug: "homes", label: "Homes", desc: "Detached and single-family homes." },
+  { slug: "condos-townhomes", label: "Condos and Townhomes", desc: "Condos, townhomes, and strata properties." },
+  { slug: "land", label: "Land", desc: "Vacant land, lots, and acreage." },
+  { slug: "investment", label: "Investment", desc: "Income and revenue properties." },
+] as const;
+
+/* ---------------- RV column mapping (preferred) ---------------- */
+const RV_COL_BY_TYPE: Record<string, string> = {
+  homes: "rv_homes",
+  "condos-townhomes": "rv_condos_townhomes",
+  land: "rv_land",
+  investment: "rv_investment",
+};
+
+/* ---------------- getStaticPaths (self-contained) ---------------- */
+export async function getStaticPaths() {
+  const CITIES_URL = import.meta.env.PUBLIC_CITIES_JSON as string | undefined;
+  if (!CITIES_URL) return [];
+
+  const TYPE_SLUGS = ["homes", "condos-townhomes", "land", "investment"];
+
+  const _s = (v: any) => String(v ?? "").trim();
+  const _slugify = (v: any) =>
+    String(v ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+  // more tolerant than before (so blank status doesn't silently exclude cities)
+  const statusOk = (r: any) => {
+    const raw = r?.status ?? r?.Status ?? r?.published ?? r?.Published ?? "";
+    const st = _slugify(raw);
+
+    // allow common values
+    if (st === "published" || st === "publish" || st === "done" || st === "live") return true;
+
+    // if status is blank/null, we allow it (prevents "nothing builds" surprises)
+    if (!st) return true;
+
+    return false;
+  };
+
+  const toArray = (raw: any) => {
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw?.data)) return raw.data;
+    if (Array.isArray(raw?.rows)) return raw.rows;
+    return [];
+  };
+
+  const getJson = async (u: string) => {
+    const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+    return await res.json();
+  };
+
+  const raw = await getJson(CITIES_URL);
+  const rows = toArray(raw);
+
+  const citySlugs = rows
+    .filter((r: any) => statusOk(r))
+    .map((r: any) => _slugify(_s(r?.city_slug ?? r?.CitySlug ?? r?.slug ?? r?.Slug)))
+    .filter(Boolean);
+
+  return citySlugs.flatMap((city: string) =>
+    TYPE_SLUGS.map((type) => ({
+      params: { city, type },
+    }))
+  );
+}
+
+/* ---------------- params ---------------- */
+const cityParam = slugify(Astro.params.city);
+const typeParam = slugify(Astro.params.type);
+
+const typeDef = TYPES.find((t) => t.slug === typeParam);
+if (!typeDef) throw new Error(`Unknown type slug: ${typeParam || "(empty)"}`);
+
+/* ---------------- load city row (page scope) ---------------- */
+const CITIES_URL = import.meta.env.PUBLIC_CITIES_JSON as string | undefined;
+
+async function getJson(u: string) {
+  const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+  return await res.json();
+}
+function toArray(raw: any) {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.data)) return raw.data;
+  if (Array.isArray(raw?.rows)) return raw.rows;
+  return [];
+}
+
+// match getStaticPaths tolerance
+function statusOk(r: any): boolean {
+  const raw = r?.status ?? r?.Status ?? r?.published ?? r?.Published ?? "";
+  const st = slugify(raw);
+  if (st === "published" || st === "publish" || st === "done" || st === "live") return true;
+  if (!st) return true;
+  return false;
+}
+
+let cityRow: any = null;
+let loadError: string | null = null;
+
+if (CITIES_URL) {
+  try {
+    const raw = await getJson(CITIES_URL);
+    const rows = toArray(raw);
+
+    // keep the status filter but tolerant
+    cityRow =
+      rows
+        .filter((r: any) => statusOk(r))
+        .find((r: any) => slugify(r?.city_slug ?? r?.CitySlug ?? r?.slug ?? r?.Slug) === cityParam) ?? null;
+
+    // if still not found, try without status filter (helps diagnose "status mismatch")
+    if (!cityRow) {
+      cityRow =
+        rows.find((r: any) => slugify(r?.city_slug ?? r?.CitySlug ?? r?.slug ?? r?.Slug) === cityParam) ?? null;
+    }
+  } catch (e: any) {
+    loadError = e?.message ? String(e.message) : "Failed to load city data.";
+    cityRow = null;
+  }
+}
+
+const cityName = s(cityRow?.city_name ?? cityRow?.CityName) || titleCaseFromSlug(cityParam);
+const regionName = s(cityRow?.region_name ?? cityRow?.RegionName);
+const regionSlug = s(cityRow?.region_slug ?? cityRow?.RegionSlug);
+
+/* ---------------- RV URL (tolerant resolver) ---------------- */
+function pickFirst(row: any, keys: string[]) {
+  for (const k of keys) {
+    const v = s(row?.[k]);
+    if (v) return { key: k, value: v };
+  }
+  return { key: "", value: "" };
+}
+
+const typeKey = typeParam.replace(/-/g, "_"); // condos-townhomes -> condos_townhomes
+
+const candidates = [
+  RV_COL_BY_TYPE[typeParam], // your canonical mapping
+  `rv_${typeKey}`,
+  `rv_${typeKey}_url`,
+  `rv_${typeParam}`,
+  `rv_${typeParam}_url`,
+  "rv_url",
+  "rv",
+].filter(Boolean) as string[];
+
+const picked = cityRow ? pickFirst(cityRow, candidates) : { key: "", value: "" };
+
+const rvCol = picked.key || (RV_COL_BY_TYPE[typeParam] || "");
+const rvUrl = picked.value;
+
+/* ---------------- SEO ---------------- */
+const title = `${typeDef.label} in ${cityName}`;
+const subtitle = typeDef.desc;
+
+const lead = cityRow ? (leadFrom?.(cityRow) ?? "") : "";
+const description =
+  buildMetaDescription?.(title, lead) ??
+  `${typeDef.label} listings in ${cityName}, British Columbia.`;
+---
+
+<Layout title={title} description={description}>
+  <CrumbsBar
+    items={[
+      { label: "Home", href: "/" },
+      ...(regionSlug
+        ? [
+            { label: "Regions", href: "/regions" },
+            { label: regionName || titleCaseFromSlug(regionSlug), href: `/regions/${regionSlug}` },
+          ]
+        : [{ label: "Cities", href: "/cities" }]),
+      { label: cityName, href: `/cities/${cityParam}` },
+      { label: typeDef.label, href: `/cities/${cityParam}/${typeParam}` },
+    ]}
+  />
+
+  <PageHeader title={title} subtitle={subtitle} lead={lead} />
+
+  <section style="margin-top: 1rem;">
+    <Card>
+      <h2 style="margin:0 0 .5rem 0;">Listings</h2>
+      <p style="margin:0 0 1rem 0; opacity:.8;">
+        Browse {typeDef.label.toLowerCase()} listings in {cityName}.
+      </p>
+
+      {!CITIES_URL ? (
+        <p style="margin:0; opacity:.8;">
+          Missing <code>PUBLIC_CITIES_JSON</code> - set it in your env so this page can load city rows and RV URLs.
+        </p>
+      ) : loadError ? (
+        <p style="margin:0; opacity:.8;">
+          City data load error - <code>{loadError}</code>
+        </p>
+      ) : rvUrl ? (
+        <RVEmbed rv_url={rvUrl} />
+      ) : (
+        <>
+          <p style="margin:0 0 .5rem 0; opacity:.8;">
+            No listings source configured yet for this city/type. Expected one of these keys:
+          </p>
+          <p style="margin:0 0 1rem 0; opacity:.85;">
+            {candidates.map((k, i) => (
+              <>
+                <code>{k}</code>
+                {i < candidates.length - 1 ? ", " : ""}
+              </>
+            ))}
+          </p>
+
+          {/* DEV DEBUG - remove after fixing */}
+          {cityRow ? (
+            <pre
+              style="
+                margin:0;
+                padding:.75rem;
+                font-size:12px;
+                line-height:1.4;
+                background:#f8fafc;
+                border:1px solid #e2e8f0;
+                border-radius:8px;
+                white-space:pre-wrap;
+                opacity:.85;
+              "
+            >
+{JSON.stringify(
+  {
+    CITIES_URL: CITIES_URL || null,
+    cityParam,
+    typeParam,
+    resolvedCitySlug: cityRow?.city_slug ?? cityRow?.CitySlug ?? cityRow?.slug ?? cityRow?.Slug ?? null,
+    statusRaw: cityRow?.status ?? cityRow?.Status ?? cityRow?.published ?? cityRow?.Published ?? null,
+
+    rvCandidatesTried: candidates,
+    rvKeyPicked: rvCol || null,
+    rvValueResolved: rvUrl || null,
+
+    availableKeys: Object.keys(cityRow).sort(),
+  },
+  null,
+  2
+)}
+            </pre>
+          ) : (
+            <p style="font-size:12px; opacity:.7; margin:0;">
+              cityRow not found (check city_slug match and status filtering)
+            </p>
+          )}
+        </>
+      )}
+    </Card>
+  </section>
+</Layout>

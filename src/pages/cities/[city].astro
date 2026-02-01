@@ -1,11 +1,15 @@
 ---
+// File: src/pages/cities/[city].astro
 export const prerender = true;
 
 import Layout from "../../layouts/Layout.astro";
 import PageHeader from "../../components/ui/PageHeader.astro";
 import Card from "../../components/ui/Card.astro";
-import StatCard from "../../components/ui/StatCard.astro";
-import PlaceImage from "../../components/ui/PlaceImage.astro";
+import HeroImage from "../../components/ui/HeroImage.astro";
+import CrumbsBar from "../../components/ui/CrumbsBar.astro";
+import RVEmbed from "../../components/RVEmbed.astro";
+
+import { buildMetaDescription, leadFrom } from "../../lib/seo";
 
 /* ---------------- accents ---------------- */
 const ACCENTS = {
@@ -23,17 +27,64 @@ const FALLBACK_ACCENT = ACCENTS["lower-mainland"];
 const s = (v: any) => String(v ?? "").trim();
 const norm = (v: any) => s(v).toLowerCase();
 
-async function getJson(u: string) {
-  const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-  return await res.json();
+/* ---------------- lifestyle flags helpers ---------------- */
+function parseFlags(raw: any): string[] {
+  const v = s(raw);
+  if (!v) return [];
+  return v
+    .split(/[;,|]/g)
+    .map((p) =>
+      p
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/-+/g, "_")
+    )
+    .filter(Boolean);
 }
 
-function toArray(raw: any) {
-  if (Array.isArray(raw)) return raw;
-  if (Array.isArray(raw?.data)) return raw.data;
-  if (Array.isArray(raw?.rows)) return raw.rows;
-  return [];
+function titleizeFlag(f: string) {
+  return String(f || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/* -------- lifestyle formatting (no markdown dependency) -------- */
+function splitLifestyle(md?: string) {
+  const raw = String(md ?? "").trim();
+  if (!raw) return [];
+
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = line.match(/^\*\*(.+?)\*\*$/);
+      if (m) return { kind: "h", text: m[1].trim() };
+
+      if (
+        line.length <= 40 &&
+        /^[A-Za-z0-9 &/’'-]+$/.test(line) &&
+        !line.endsWith(".")
+      ) {
+        return { kind: "h", text: line };
+      }
+
+      return { kind: "p", text: line };
+    });
+}
+
+/* ---------------- RealtyVis helpers (BLOCKS ONLY) ---------------- */
+const BLOCK_RE = /^[A-Z0-9]{8}-[A-Z0-9]{8}$/i;
+
+const stripScripts = (html: string = "") =>
+  html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+
+function extractAttr(html: string, attr: "data-rv-block") {
+  const clean = stripScripts(html);
+  const re = new RegExp(`${attr}=["']?([A-Z0-9]{8}-[A-Z0-9]{8})["']?`, "i");
+  const m = clean.match(re);
+  return (m?.[1] || "").trim();
 }
 
 /* ---------------- static paths (CITIES sheet) ---------------- */
@@ -73,9 +124,18 @@ export async function getStaticPaths() {
             city_slug: citySlug,
             subtitle: s2(r?.subtitle),
             intro: s2(r?.intro),
+            lifestyle: s2(r?.lifestyle),
             region_slug: s2(r?.region_slug),
             region_name: s2(r?.region_name),
             hero: s2(r?.hero),
+
+            // --- lifestyle flags wiring ---
+            lifestyle_flags: s2(r?.lifestyle_flags),
+            lifestyle_primary: s2(r?.lifestyle_primary),
+            lifestyle_secondary: s2(r?.lifestyle_secondary),
+
+            rv_block: s2(r?.rv_block ?? r?.cta1 ?? ""),
+            rv_url: s2(r?.rv_url ?? r?.url ?? ""),
           },
         };
       })
@@ -93,17 +153,34 @@ const {
   city_slug,
   subtitle,
   intro,
+  lifestyle,
   region_slug,
   region_name,
   hero,
+
+  // --- lifestyle flags wiring ---
+  lifestyle_flags,
+  lifestyle_primary,
+  lifestyle_secondary,
+
+  rv_block,
+  rv_url,
 } = Astro.props as {
   city_name?: string;
   city_slug?: string;
   subtitle?: string;
   intro?: string;
+  lifestyle?: string;
   region_slug?: string;
   region_name?: string;
   hero?: string;
+
+  lifestyle_flags?: string;
+  lifestyle_primary?: string;
+  lifestyle_secondary?: string;
+
+  rv_block?: string;
+  rv_url?: string;
 };
 
 const cityPretty =
@@ -119,7 +196,7 @@ const regionPretty =
     ? regionSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : "BC");
 
-const accent = ACCENTS[norm(regionSlug)] ?? FALLBACK_ACCENT;
+const accent = (ACCENTS as any)[norm(regionSlug)] ?? FALLBACK_ACCENT;
 
 const accentStyle = `
   --accent:${accent.a};
@@ -128,73 +205,302 @@ const accentStyle = `
   --accent-800:${accent.a800};
 `;
 
+/* ---------------- lifestyle flags arrays ---------------- */
+const cityFlags = parseFlags(lifestyle_flags);
+const primaryFlags = parseFlags(lifestyle_primary);
+const secondaryFlags = parseFlags(lifestyle_secondary);
+const uniq = (arr: string[]) => Array.from(new Set(arr));
+const allFlags = uniq([...primaryFlags, ...secondaryFlags, ...cityFlags]);
+
+/* pills (hide Lifestyle unless present) */
 const pills = [
   { label: "Overview", href: "#overview" },
   { label: "Listings", href: "#listings" },
+  ...(lifestyle && lifestyle.trim() ? [{ label: "Lifestyle", href: "#lifestyle" }] : []),
   { label: "What’s next", href: "#next" },
 ];
+
+/* ---------------- crumbs ---------------- */
+const crumbs = [
+  { label: "Home", href: "/" },
+  { label: "Regions", href: "/regions" },
+  ...(regionSlug ? [{ label: regionPretty, href: `/regions/${regionSlug}` }] : []),
+  { label: cityPretty, href: `/cities/${city}` },
+];
+
+/* ---------------- SEO (meta + lead) ---------------- */
+const metaDesc = buildMetaDescription({
+  kind: "city",
+  intro,
+  subtitle,
+  cityPretty,
+  regionPretty,
+  regionSlug,
+  max: 155,
+});
+
+const headerLead = leadFrom({
+  subtitle,
+  intro,
+  fallback: `City hub page for ${regionPretty} real estate.`,
+  max: 80,
+});
+
+/* ---------------- Listings tiles ---------------- */
+const listingTiles = [
+  { label: "Homes", href: `/cities/${city}/homes` },
+  { label: "Condo and Townhome", href: `/cities/${city}/condos-townhomes` },
+  { label: "Land", href: `/cities/${city}/land` },
+  { label: "Investment", href: `/cities/${city}/investment` },
+];
+
+/* ---------------- RealtyVis listings (BLOCKS ONLY) ---------------- */
+const rawCta =
+  (s(rv_block) || s(rv_url) || "").trim() ||
+  String(import.meta.env.PUBLIC_DEFAULT_RV_BLOCK ?? "").trim();
+
+let rvBlockId = "";
+if (BLOCK_RE.test(rawCta)) rvBlockId = rawCta;
+else rvBlockId = extractAttr(rawCta, "data-rv-block");
+
+const hasValidBlock = BLOCK_RE.test(rvBlockId);
+
+const listingsUrl = s(rv_url);
+const listingsUrlIsHttp = /^https?:\/\//i.test(listingsUrl);
 ---
 
 <style is:global>
   .accent-dot { background: var(--accent); }
   .accent-hover:hover { border-color: var(--accent-200); }
-  .accent-pill {
+
+  :target { scroll-margin-top: 140px; }
+
+  .lifestyle-block { line-height: 1.6; }
+  .lifestyle-block .lifestyle-h,
+  .lifestyle-block .lifestyle-p { margin: 0; }
+  .lifestyle-block .lifestyle-h + .lifestyle-p { margin-top: 0.02rem; }
+  .lifestyle-block .lifestyle-p + .lifestyle-h { margin-top: 0.9rem; }
+  .lifestyle-block .lifestyle-p + .lifestyle-p { margin-top: 0.45rem; }
+
+  /* ---------------- Card hover (match REGION tiles) ---------------- */
+  .city-card { background: #ffffff !important; }
+  .city-card:nth-child(10n + 2)  { background: #fbfbfc !important; }
+  .city-card:nth-child(10n + 3)  { background: #fcfbfa !important; }
+  .city-card:nth-child(10n + 4)  { background: #fafcfd !important; }
+  .city-card:nth-child(10n + 5)  { background: #fdfbf7 !important; }
+  .city-card:nth-child(10n + 6)  { background: #fbfcfb !important; }
+  .city-card:nth-child(10n + 7)  { background: #fbfbfd !important; }
+  .city-card:nth-child(10n + 8)  { background: #fcfcfa !important; }
+  .city-card:nth-child(10n + 9)  { background: #fafafa !important; }
+  .city-card:nth-child(10n + 10) { background: #f9fbfc !important; }
+
+  .city-card{
+    position: relative;
+    overflow: hidden;
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .city-card:hover { transform: translateY(-1px); }
+
+  .city-card::before{
+    content:"";
+    position:absolute;
+    left:0; top:0; bottom:0;
+    width:0;
+    background: var(--accent);
+    opacity:0;
+    transition: width 180ms ease, opacity 180ms ease;
+    pointer-events:none;
+    border-top-left-radius:16px;
+    border-bottom-left-radius:16px;
+  }
+
+  .city-card:hover,
+  .city-card:focus-visible{
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
     border-color: var(--accent-200);
-    background: var(--accent-50);
+  }
+
+  .city-card:hover::before,
+  .city-card:focus-visible::before{
+    width:6px;
+    opacity:1;
+  }
+
+  .city-title{ transition: color 160ms ease, transform 160ms ease; }
+  .city-card:hover .city-title,
+  .city-card:focus-visible .city-title{
     color: var(--accent-800);
+    transform: translateX(1px);
+  }
+
+  .city-arrow{ transition: transform 160ms ease, color 160ms ease; }
+  .city-card:hover .city-arrow,
+  .city-card:focus-visible .city-arrow{
+    transform: translateX(2px);
+    color: var(--accent-800);
+  }
+
+  /* ---------------- Sticky nav pills ---------------- */
+  .sticky-pills {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: none;
+    margin-top: 5px;
+  }
+
+  /* ---------------- RealtyVis: remove ONLY the outer wrapper (keep listing cards) ---------------- */
+  .rv-inline{
+    border: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  /* Only strip the first wrapper level(s) - DO NOT target descendants broadly */
+  .rv-inline > *{
+    border: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .rv-inline > * > *{
+    border: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .rv-inline iframe{
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    display: block;
+    width: 100%;
+  }
+
+  .rv-fallback{
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: #fff3cd;
+    border: 1px solid #ffe69c;
+    border-radius: 12px;
+    color: #5c3c00;
+  }
+  .rv-fallback a{ font-weight: 800; text-decoration: underline; }
+  .rv-fallback code{ font-weight: 800; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .city-card,
+    .city-card::before,
+    .city-title,
+    .city-arrow{ transition: none !important; }
+    .city-card:hover{ transform:none; }
+    .city-card:hover .city-title{ transform:none; }
+    .city-card:hover .city-arrow{ transform:none; }
+  }
+
+  /* RV: remove outer padding so cards align with your container */
+  .rv-block .rv-gridView { padding: 0 !important; }
+  .rv-block { padding: 0 !important; }
+
+  /* Try to improve RV carousel swipe/snapping */
+  .rv-inline [class*="carousel"],
+  .rv-inline [class*="slider"],
+  .rv-inline [class*="scroll"]{
+    scroll-snap-type: x mandatory !important;
+    scroll-padding-left: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rv-inline [class*="carousel"] > *,
+  .rv-inline [class*="slider"] > *,
+  .rv-inline [class*="scroll"] > *{
+    scroll-snap-align: start !important;
+  }
+
+  /* ---------------- Overview card (editorial anchor) ---------------- */
+  .overview-card {
+    background: #faf7f0!important;
+    border-color: #94a3b859!important;
+    box-shadow: 0 10px 26px #0f172a0f!important;
+    position: relative;
+    margin-top: 20px;
+  }
+
+  /* quiet authority heading */
+  .overview-card h2 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #0f172a;
+  }
+
+  /* weighty, readable copy */
+  .overview-card p {
+    margin-top: 0.5rem;
+    font-size: 0.95rem;
+    line-height: 1.65;
+    font-weight: 500;
+    color: #334155;
+  }
+
+  .overview-card{
+    background: #faf7f0 !important;
+    border-color: rgba(148, 163, 184, .35) !important;
+    box-shadow: 0 10px 26px rgba(15,23,42,.06) !important;
+    position: relative;
+  }
+
+  .overview-card::before{
+    content:"";
+    position:absolute;
+    left: 18px;
+    top: 18px;
+    width: 36px;
+    height: 3px;
+    background: var(--accent);
+    opacity: .55;
+    border-radius: 999px;
   }
 </style>
 
-<Layout
-  title={`${cityPretty} Real Estate - ${regionPretty}`}
-  description={intro || `Browse ${cityPretty} real estate in ${regionPretty}.`}
->
-  {/* ✅ No mx-auto, no max-w-* here. Layout controls width. */}
-  <div style={accentStyle} class="w-full py-10">
+<Layout title={`${cityPretty} Real Estate - ${regionPretty}`} description={metaDesc}>
+  <div style={accentStyle} class="w-full pt-6 pb-10">
+    <CrumbsBar crumbs={crumbs} />
 
-    {/* breadcrumb + top-right helper */}
-    <div class="-mt-4 mb-5 flex items-start justify-between gap-6 text-sm text-slate-500">
-      <div class="min-w-0">
-        <a href="/" class="hover:text-slate-900">Home</a>
-        <span class="mx-2">/</span>
-        <a href="/regions" class="hover:text-slate-900">Regions</a>
-        {regionSlug ? (
-          <>
-            <span class="mx-2">/</span>
-            <a href={`/regions/${regionSlug}`} class="hover:text-slate-900">
-              {regionPretty}
-            </a>
-          </>
-        ) : null}
-        <span class="mx-2">/</span>
-        <span class="text-slate-900">{cityPretty}</span>
-      </div>
+    <PageHeader title={cityPretty} lead={headerLead} />
 
-      <a
-        href="/contact"
-        class="group shrink-0 whitespace-nowrap text-sm text-slate-500 transition hover:text-slate-900"
-      >
-        <span class="inline-flex items-center gap-2">
-          <span class="h-1.5 w-1.5 rounded-full opacity-80" style="background: var(--accent)"></span>
-          <span>Need help in {cityPretty}?</span>
-          <span class="text-slate-400 transition group-hover:translate-x-0.5" style="color: var(--accent)">›</span>
-        </span>
-      </a>
-    </div>
-
-    <PageHeader
-      title={cityPretty}
-      lead={subtitle || `City hub page for ${regionPretty} real estate.`}
-    />
-
-    <PlaceImage
+    <HeroImage
       src={s(hero)}
       alt={`${cityPretty}, British Columbia`}
       fallbackText={`Photo of ${cityPretty} coming soon`}
+      mobileRatio="1:1"
+      priority={true}
+      class="mt-6"
     />
 
-    {/* pills */}
-    <div class="my-6 flex flex-wrap gap-2">
+    <div class="sticky-pills mt-6 mb-2 flex flex-wrap gap-2">
       {pills.map((p) => (
         <a
           href={p.href}
@@ -206,70 +512,134 @@ const pills = [
       ))}
     </div>
 
-    <div class="grid gap-6 lg:grid-cols-12">
-      {/* LEFT */}
-      <aside class="lg:col-span-4 lg:sticky lg:top-8 space-y-6">
-        <div class="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600">
-          <span class="accent-dot h-2 w-2 rounded-full"></span>
-          Locked
+    {allFlags.length ? (
+      <div class="mt-2 flex flex-wrap gap-2">
+        {allFlags.map((f) => (
+        <span
+  class="inline-flex items-center rounded-full border bg-white px-3 py-1 text-xs text-slate-600"
+  style="border-color: rgba(148,163,184,.4);"
+>
+  {titleizeFlag(f)}
+</span>
+
+        ))}
+      </div>
+    ) : null}
+
+    <div class="space-y-6">
+      <div id="overview">
+        <Card class="overview-card">
+          <h2 class="text-base font-semibold text-slate-900">Overview</h2>
+
+          {intro ? (
+            <p class="mt-2 text-sm text-slate-700 whitespace-pre-line font-medium leading-relaxed">
+              {intro}
+            </p>
+          ) : (
+            <p class="mt-2 text-sm text-slate-700 font-medium leading-relaxed">
+              Use this page to get oriented. Listings wiring comes next for bc.realestate.
+            </p>
+          )}
+        </Card>
+      </div>
+
+      <div id="listings">
+        <h2 class="text-base font-semibold text-slate-900">Listings</h2>
+
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {listingTiles.map((t) => (
+            <a
+              href={t.href}
+              class="city-card accent-hover group block rounded-2xl border border-slate-200 p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md focus:outline-none"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <div class="city-title text-sm font-semibold text-slate-900">{t.label}</div>
+                  <p class="mt-2 text-xs text-slate-600">Browse {cityPretty} listings</p>
+                </div>
+                <span class="city-arrow text-xs font-medium text-slate-500">→</span>
+              </div>
+
+              <div class="mt-4 flex items-center gap-2 text-xs text-slate-600">
+                <span class="h-2 w-2 rounded-full" style="background: var(--accent);" aria-hidden="true"></span>
+                <span>Listings</span>
+              </div>
+            </a>
+          ))}
         </div>
 
-        <a href="#overview" class="block accent-hover rounded-2xl">
-          <StatCard label="Overview" value="—" hint="Start here ›" />
-        </a>
+        <h2 class="mt-6 text-base font-semibold text-slate-900">New in {cityPretty}</h2>
 
-        <a href="#listings" class="block accent-hover rounded-2xl">
-          <StatCard label="Listings" value="—" hint="Attach last" />
-        </a>
-
-        {regionSlug ? (
-          <a href={`/regions/${regionSlug}`} class="block accent-hover rounded-2xl">
-            <StatCard label="Region" value={regionPretty} hint="Back to region hub ›" />
-          </a>
-        ) : (
-          <StatCard label="Region" value="—" hint="Missing region_slug" />
-        )}
-      </aside>
-
-      {/* RIGHT */}
-      <main class="lg:col-span-8 space-y-6">
-        <Card id="overview">
-          <div class="text-sm font-semibold text-slate-900">Overview</div>
-          <p class="mt-2 text-sm text-slate-600">
-            {intro || `Use this page to get oriented. Listings wiring comes next for bc.realestate.`}
-          </p>
-
-          {regionSlug ? (
-            <div class="mt-4">
-              <a
-                href={`/regions/${regionSlug}`}
-                class="accent-hover inline-flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:text-slate-900"
-              >
-                <span>Back to {regionPretty}</span>
-                <span class="text-slate-400">›</span>
-              </a>
+        <div class="mt-4">
+          {hasValidBlock ? (
+            <div class="rv-inline">
+              <RVEmbed block={rvBlockId} minHeight="0px" showSkeleton={false} />
             </div>
-          ) : null}
-        </Card>
+          ) : (
+            <div class="rv-fallback">
+              <p><strong>Listings:</strong> This page isn’t wired to a RealtyVis block yet.</p>
 
-        <Card id="listings">
-          <div class="text-sm font-semibold text-slate-900">Listings</div>
+              {listingsUrlIsHttp ? (
+                <p>
+                  <a href={listingsUrl} target="_blank" rel="noopener">
+                    View all results →
+                  </a>
+                </p>
+              ) : (
+                <p><a href="/search">Browse all BC listings</a></p>
+              )}
 
-          <div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
-            <div class="font-semibold text-slate-900">Listings coming soon</div>
-            <div class="mt-1 text-sm text-slate-600">
-              This page is live to establish the BC geography structure (region - city). Inventory embeds get added next.
+              <p style="opacity:.85;margin-top:.25rem;">
+                (Tip: create a RealtyVis <strong>block</strong> and paste its 8-8 ID into{" "}
+                <code>rv_block</code> on the city row.)
+              </p>
             </div>
-          </div>
-        </Card>
+          )}
+        </div>
+      </div>
 
-        <Card id="next">
+      {lifestyle && lifestyle.trim() ? (
+        <div id="lifestyle">
+          <Card>
+            <h2 class="text-base font-semibold text-slate-900">Lifestyle & Context</h2>
+
+            <div class="lifestyle-block mt-3 text-sm text-slate-600">
+  {splitLifestyle(lifestyle).map((row) =>
+    row.kind === "h" ? (
+      <div class="lifestyle-h font-semibold text-slate-900">{row.text}</div>
+    ) : (
+      <p class="lifestyle-p">{row.text}</p>
+    )
+  )}
+</div>
+
+          </Card>
+        </div>
+      ) : null}
+
+      <div id="next">
+        <Card>
           <div class="text-sm font-semibold text-slate-900">What’s next</div>
           <p class="mt-2 text-sm text-slate-600">
             Neighbourhood hubs - market context - listings embeds - then internal linking.
           </p>
         </Card>
-      </main>
+      </div>
+
+      {regionSlug ? (
+        <Card>
+          <div class="text-xs font-semibold tracking-wide text-slate-500">REGION</div>
+          <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+            <div class="text-sm font-semibold text-slate-900">{regionPretty}</div>
+            <a
+              href={`/regions/${regionSlug}`}
+              class="accent-hover inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-700 transition hover:text-slate-900"
+            >
+              Back to region hub <span class="text-slate-400">›</span>
+            </a>
+          </div>
+        </Card>
+      ) : null}
     </div>
   </div>
 </Layout>

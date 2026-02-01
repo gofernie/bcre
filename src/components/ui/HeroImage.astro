@@ -1,0 +1,88 @@
+---
+type Props = {
+  src: string;
+  alt: string;
+  fallbackText?: string;
+  mobileRatio?: "1:1" | "16:9";
+  priority?: boolean;
+  class?: string;
+};
+
+const {
+  src,
+  alt,
+  fallbackText = "",
+  mobileRatio = "1:1",
+  priority = true,
+  class: className = "",
+} = Astro.props;
+
+const hasSrc = Boolean(String(src ?? "").trim());
+const mobileAspect = mobileRatio === "16:9" ? "aspect-[16/9]" : "aspect-square";
+---
+
+<figure class={`hero-figure ${className}`}>
+  {hasSrc ? (
+    <picture>
+      {/* Desktop container enforces 21:9 */}
+      <img
+        src={src}
+        alt={alt}
+        class={`hero-img ${mobileAspect}`}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
+        fetchpriority={priority ? "high" : "auto"}
+      />
+    </picture>
+  ) : (
+    <div class={`hero-fallback ${mobileAspect}`}>
+      <div class="hero-fallback-inner">
+        <div class="hero-fallback-title">{fallbackText || "Image coming soon"}</div>
+      </div>
+    </div>
+  )}
+</figure>
+
+<style>
+  .hero-figure{
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(2, 6, 23, 0.03);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    box-shadow: 0 10px 26px rgba(15,23,42,.06);
+  }
+
+  .hero-img{
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+    object-position: center;
+  }
+
+  /* On desktop, force 21:9 and fill the box */
+  @media (min-width: 900px){
+    .hero-figure{ aspect-ratio: 21 / 9; }
+    .hero-img{ height: 100%; }
+    .hero-img.aspect-square,
+    .hero-img.aspect-\[16\/9\]{ aspect-ratio: auto; } /* container controls ratio */
+  }
+
+  /* Fallback uses the same aspect behavior */
+  .hero-fallback{
+    width: 100%;
+    display: grid;
+    place-items: center;
+    background: rgba(2, 6, 23, 0.035);
+  }
+  @media (min-width: 900px){
+    .hero-fallback{ aspect-ratio: 21 / 9; }
+  }
+  .hero-fallback-inner{
+    padding: 18px;
+    text-align: center;
+    color: rgba(15,23,42,.65);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+</style>

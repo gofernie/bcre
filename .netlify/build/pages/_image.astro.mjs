@@ -1507,7 +1507,7 @@ const $$Font = createComponent(($$result, $$props, $$slots) => {
   return renderTemplate`<style>${unescapeHTML(data.css)}</style>${filteredPreloadData?.map(({ url, type }) => renderTemplate`<link rel="preload"${addAttribute(url, "href")} as="font"${addAttribute(`font/${type}`, "type")} crossorigin>`)}`;
 }, "C:/projects/bcre/node_modules/astro/components/Font.astro", void 0);
 
-const assetQueryParams = undefined;
+const assetQueryParams = new URLSearchParams([["dpl","0"]]);
 							const imageConfig = {"endpoint":{"route":"/_image"},"service":{"entrypoint":"@astrojs/netlify/image-service.js","config":{}},"domains":[],"remotePatterns":[],"responsiveStyles":false};
 							Object.defineProperty(imageConfig, 'assetQueryParams', {
 								value: assetQueryParams,

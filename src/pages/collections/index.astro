@@ -1,0 +1,148 @@
+---
+// File: src/pages/collections/index.astro
+export const prerender = true;
+
+import Layout from "../../layouts/Layout.astro";
+import PageHeader from "../../components/ui/PageHeader.astro";
+import Card from "../../components/ui/Card.astro";
+import CrumbsBar from "../../components/ui/CrumbsBar.astro";
+
+import { COLLECTIONS } from "../../lib/collections";
+
+/* ---------------- crumbs ---------------- */
+const crumbs = [
+  { label: "Home", href: "/" },
+  { label: "Collections", href: "/collections" },
+];
+
+/* ---------------- order ---------------- */
+/**
+ * Buyer-journey order (explicit, stable).
+ * Keep this in sync with the canonical keys in lib/collections.ts
+ */
+const COLLECTION_ORDER = [
+  "ski-towns",
+  "coastal-lifestyle",
+  "family-friendly",
+  "employment-hubs",
+  "remote-work-friendly",
+  "regional-hubs",
+  "retirement-friendly",
+  "rural-acreage-living",
+];
+
+/* ---------------- cards ---------------- */
+/**
+ * IMPORTANT:
+ * - We render from the canonical COLLECTIONS source of truth.
+ * - Order is controlled by COLLECTION_ORDER to prevent drift.
+ */
+const cards = COLLECTION_ORDER
+  .map((slug) => {
+    const cfg = (COLLECTIONS as any)[slug];
+    if (!cfg) return null;
+    return {
+      slug,
+      title: cfg.title,
+      lead: cfg.lead,
+      icon: cfg.icon,
+    };
+  })
+  .filter(Boolean);
+---
+
+<style is:global>
+  .collection-card{
+    position: relative;
+    overflow: hidden;
+    background: #ffffff !important;
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .collection-card:hover{ transform: translateY(-1px); }
+  .collection-card:hover,
+  .collection-card:focus-visible{
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    border-color: rgba(148, 163, 184, .45);
+  }
+
+  .collection-title{
+    transition: color 160ms ease, transform 160ms ease;
+  }
+  .collection-card:hover .collection-title,
+  .collection-card:focus-visible .collection-title{
+    color: #0f172a;
+    transform: translateX(1px);
+  }
+
+  .collection-arrow{
+    transition: transform 160ms ease, color 160ms ease;
+  }
+  .collection-card:hover .collection-arrow,
+  .collection-card:focus-visible .collection-arrow{
+    transform: translateX(2px);
+    color: #0f172a;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .collection-card,
+    .collection-title,
+    .collection-arrow{ transition: none !important; }
+    .collection-card:hover{ transform: none; }
+    .collection-card:hover .collection-title{ transform: none; }
+    .collection-card:hover .collection-arrow{ transform: none; }
+  }
+</style>
+
+<Layout
+  title="BC Real Estate Collections"
+  description="Browse BC cities by lifestyle collections - ski towns, family-friendly communities, coastal lifestyle, and more."
+>
+  <div class="w-full pt-6 pb-10">
+    <CrumbsBar
+      crumbs={crumbs}
+      helpLabel="Need help choosing a community?"
+      helpHref="/contact"
+    />
+
+    <PageHeader
+      title="Collections"
+      lead="Browse cities by lifestyle - quick filters that map to how people actually shop."
+    />
+
+    <div class="mt-6 space-y-6">
+      <Card>
+        <div class="text-sm font-semibold text-slate-900">How this works</div>
+        <p class="mt-2 text-sm text-slate-600">
+          Each collection is a simple tag filter based on your city lifestyle flags.
+        </p>
+      </Card>
+
+      <section>
+        <h2 class="text-base font-semibold text-slate-900">Browse collections</h2>
+
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {cards.map((c) => (
+            <a
+              href={`/collections/${c.slug}`}
+              class="collection-card group block rounded-2xl border border-slate-200 p-5 shadow-sm focus:outline-none"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <div class="collection-title text-base font-semibold text-slate-900">
+                    <span class="mr-2" aria-hidden="true">{c.icon ?? "•"}</span>
+                    {c.title}
+                  </div>
+                  <p class="mt-2 text-sm text-slate-600">{c.lead}</p>
+                </div>
+
+                <span class="collection-arrow text-xs font-medium text-slate-500">→</span>
+              </div>
+
+              <div class="mt-4 text-xs text-slate-600">View cities</div>
+            </a>
+          ))}
+        </div>
+      </section>
+    </div>
+  </div>
+</Layout>

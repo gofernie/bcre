@@ -4,8 +4,10 @@ export const prerender = true;
 import Layout from "../../layouts/Layout.astro";
 import PageHeader from "../../components/ui/PageHeader.astro";
 import Card from "../../components/ui/Card.astro";
-import StatCard from "../../components/ui/StatCard.astro";
-import PlaceImage from "../../components/ui/PlaceImage.astro";
+import HeroImage from "../../components/ui/HeroImage.astro";
+import CrumbsBar from "../../components/ui/CrumbsBar.astro";
+
+import { buildMetaDescription, leadFrom } from "../../lib/seo";
 
 /* ---------------- accents ---------------- */
 const ACCENTS = {
@@ -17,12 +19,29 @@ const ACCENTS = {
   "thompson-nicola": { a: "#8b5cf6", a200: "#ddd6fe", a50: "#f5f3ff", a800: "#5b21b6" },
   cariboo: { a: "#f43f5e", a200: "#fecdd3", a50: "#fff1f2", a800: "#9f1239" },
 };
-
 const FALLBACK_ACCENT = ACCENTS["lower-mainland"];
 
-/* ---------------- tiny helpers ---------------- */
+/* ---------------- helpers ---------------- */
 const s = (v: any) => String(v ?? "").trim();
 const norm = (v: any) => s(v).toLowerCase();
+
+/** slugify for URL safety + consistency */
+const slugify = (v: any) =>
+  String(v ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+/** Normalize sheet-provided hero values so nested routes don't break */
+function normalizeImgSrc(v: any) {
+  const src = s(v);
+  if (!src) return "";
+  if (src.startsWith("http://") || src.startsWith("https://")) return src;
+  if (src.startsWith("/")) return src;
+  return `/${src}`;
+}
 
 async function getJson(u: string) {
   const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
@@ -39,11 +58,14 @@ function toArray(raw: any) {
 
 /* ---------------- static paths (REGIONS sheet) ---------------- */
 export async function getStaticPaths() {
-  const url = import.meta.env.PUBLIC_REGIONS_JSON;
-  if (!url) return [];
-
   const s2 = (v: any) => String(v ?? "").trim();
-  const norm2 = (v: any) => s2(v).toLowerCase();
+  const slugify2 = (v: any) =>
+    String(v ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
 
   async function getJson2(u: string) {
     const res = await fetch(u, { headers: { accept: "application/json,text/plain,*/*" } });
@@ -58,23 +80,41 @@ export async function getStaticPaths() {
     return [];
   }
 
+  const url = import.meta.env.PUBLIC_REGIONS_JSON;
+
+  if (!url) {
+    console.warn("[regions] Missing PUBLIC_REGIONS_JSON");
+    return [];
+  }
+
   try {
     const raw = await getJson2(url);
     const rows = toArray2(raw);
 
     return rows
-      .filter((r: any) => norm2(r?.status) === "published")
-      .map((r: any) => ({
-        params: { region: s2(r?.region_slug) },
-        props: {
-          name: s2(r?.region_name),
-          subtitle: s2(r?.subtitle),
-          intro: s2(r?.intro),
-          hero: s2(r?.hero),
-        },
-      }))
-      .filter((p: any) => p.params.region && p.props.name);
-  } catch {
+      .filter((r: any) => {
+        const status = s2(r?.status ?? r?.Status ?? r?.published ?? r?.Published);
+        return status.toLowerCase().trim() === "published";
+      })
+      .map((r: any) => {
+        const regionSlugRaw = s2(
+          r?.region_slug ?? r?.RegionSlug ?? r?.slug ?? r?.Slug ?? r?.region
+        );
+        const regionSlug = slugify2(regionSlugRaw);
+
+        return {
+          params: { region: regionSlug },
+          props: {
+            name: s2(r?.region_name ?? r?.name ?? r?.Region),
+            subtitle: s2(r?.subtitle),
+            intro: s2(r?.intro),
+            hero: s2(r?.hero),
+          },
+        };
+      })
+      .filter((p: any) => p.params.region);
+  } catch (e) {
+    console.warn("[regions] getStaticPaths failed:", e);
     return [];
   }
 }
@@ -88,13 +128,12 @@ const { name, subtitle, intro, hero } = Astro.props as {
   hero?: string;
 };
 
-const pretty =
-  name ??
-  String(region)
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+const regionSlug = slugify(region);
 
-const accent = ACCENTS[String(region)] ?? FALLBACK_ACCENT;
+const pretty =
+  name || regionSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+const accent = ACCENTS[norm(regionSlug)] ?? FALLBACK_ACCENT;
 
 const accentStyle = `
   --accent:${accent.a};
@@ -103,10 +142,18 @@ const accentStyle = `
   --accent-800:${accent.a800};
 `;
 
+/* pills */
 const pills = [
-  { label: "City hubs", href: "#cities" },
-  { label: "Market context", href: "#overview" },
+  { label: "Overview", href: "#overview" },
+  { label: "Cities", href: "#cities" },
   { label: "What’s next", href: "#next" },
+];
+
+/* ---------------- crumbs ---------------- */
+const crumbs = [
+  { label: "Home", href: "/" },
+  { label: "Regions", href: "/regions" },
+  { label: pretty, href: `/regions/${regionSlug}` },
 ];
 
 /* ---------------- load CITIES for this region ---------------- */
@@ -119,10 +166,10 @@ if (CITIES_URL) {
     const rows = toArray(raw);
 
     cities = rows
-      .filter((r: any) => norm(r?.status) === "published")
-      .filter((r: any) => norm(r?.region_slug) === norm(region))
+      .filter((r: any) => slugify(r?.status) === "published")
+      .filter((r: any) => slugify(r?.region_slug) === regionSlug)
       .map((r: any) => ({
-        slug: s(r?.city_slug),
+        slug: slugify(r?.city_slug),
         name: s(r?.city_name),
         subtitle: s(r?.subtitle),
       }))
@@ -132,54 +179,187 @@ if (CITIES_URL) {
   }
 }
 
-const cityCount = cities.length;
+/* ---------------- SEO (match city page) ---------------- */
+const metaDesc = buildMetaDescription({
+  kind: "region",
+  intro,
+  subtitle,
+  regionPretty: pretty,
+  regionSlug,
+  max: 155,
+});
+
+const headerLead = leadFrom({
+  subtitle,
+  intro,
+  fallback: `Region hub page for BC real estate.`,
+  max: 80,
+});
 ---
 
 <style is:global>
   .accent-dot { background: var(--accent); }
   .accent-hover:hover { border-color: var(--accent-200); }
+
   .accent-pill {
     border-color: var(--accent-200);
     background: var(--accent-50);
     color: var(--accent-800);
   }
+
+  /* ensure anchor jumps land below sticky headers */
+  :target { scroll-margin-top: 140px; }
+
+  /* ---------------- City-card styling (same feel as city page tiles) ---------------- */
+  .city-card { background: #ffffff !important; }
+  .city-card:nth-child(10n + 1)  { background: #ffffff !important; }
+  .city-card:nth-child(10n + 2)  { background: #fbfbfc !important; }
+  .city-card:nth-child(10n + 3)  { background: #fcfbfa !important; }
+  .city-card:nth-child(10n + 4)  { background: #fafcfd !important; }
+  .city-card:nth-child(10n + 5)  { background: #fdfbf7 !important; }
+  .city-card:nth-child(10n + 6)  { background: #fbfcfb !important; }
+  .city-card:nth-child(10n + 7)  { background: #fbfbfd !important; }
+  .city-card:nth-child(10n + 8)  { background: #fcfcfa !important; }
+  .city-card:nth-child(10n + 9)  { background: #fafafa !important; }
+  .city-card:nth-child(10n + 10) { background: #f9fbfc !important; }
+
+  .city-card{
+    position: relative;
+    overflow: hidden;
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+  .city-card:hover { transform: translateY(-1px); }
+
+  /* full-height inside accent edge (matches rounded-2xl = 16px) */
+  .city-card::before{
+    content:"";
+    position:absolute;
+    left:0; top:0; bottom:0;
+    width:0;
+    background: var(--accent);
+    opacity:0;
+    transition: width 180ms ease, opacity 180ms ease;
+    pointer-events:none;
+    border-top-left-radius:16px;
+    border-bottom-left-radius:16px;
+  }
+
+  .city-card:hover,
+  .city-card:focus-visible{
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    border-color: var(--accent-200);
+  }
+
+  .city-card:hover::before,
+  .city-card:focus-visible::before{
+    width:6px;
+    opacity:1;
+  }
+
+  /* Title hover: no underline, just tone + micro nudge */
+  .city-title{
+    transition: color 160ms ease, transform 160ms ease;
+  }
+  .city-card:hover .city-title,
+  .city-card:focus-visible .city-title{
+    color: var(--accent-800);
+    transform: translateX(1px);
+  }
+
+  /* Arrow micro-motion */
+  .city-arrow{
+    transition: transform 160ms ease, color 160ms ease;
+  }
+  .city-card:hover .city-arrow,
+  .city-card:focus-visible .city-arrow{
+    transform: translateX(2px);
+    color: var(--accent-800);
+  }
+
+  /* ---------------- Sticky nav pills (match city page spacing) ---------------- */
+  .sticky-pills{
+    position: sticky;
+    top: 0; /* adjust if you have a sticky site header */
+    z-index: 40;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: none; /* remove line under pills */
+  }
+
+  /* ---------------- Overview card (match city page editorial anchor) ---------------- */
+  .overview-card{
+    position: relative;
+    background: #faf7f0 !important;
+    border-color: rgba(148, 163, 184, .35) !important;
+    box-shadow: 0 10px 26px rgba(15,23,42,.06) !important;
+  }
+  .overview-card::before{
+    content:"";
+    position:absolute;
+    left: 18px;
+    top: 18px;
+    width: 36px;
+    height: 3px;
+    background: var(--accent);
+    opacity: .55;
+    border-radius: 999px;
+  }
+  .overview-card h2{
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #0f172a;
+    padding-top: 0.25rem;
+  }
+  .overview-card p{
+    margin-top: 0.5rem;
+    font-size: 0.95rem;
+    line-height: 1.65;
+    font-weight: 500;
+    color: #334155;
+  }
+
+  /* Respect reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .city-card,
+    .city-card::before,
+    .city-title,
+    .city-arrow{
+      transition: none !important;
+    }
+    .city-card:hover{ transform:none; }
+    .city-card:hover .city-title{ transform:none; }
+    .city-card:hover .city-arrow{ transform:none; }
+  }
 </style>
 
 <Layout
   title={`${pretty} Real Estate`}
-  description={`Explore ${pretty} real estate by city and neighbourhood.`}
+  description={metaDesc}
 >
-  <div style={accentStyle} class="w-full py-10">
-    <div class="-mt-4 mb-5 flex items-start justify-between gap-6 text-sm text-slate-500">
-      <div class="min-w-0">
-        <a href="/" class="hover:text-slate-900">Home</a>
-        <span class="mx-2">/</span>
-        <a href="/regions" class="hover:text-slate-900">Regions</a>
-        <span class="mx-2">/</span>
-        <span class="text-slate-900">{pretty}</span>
-      </div>
-
-      <a
-        href="/contact"
-        class="group shrink-0 whitespace-nowrap text-sm text-slate-500 transition hover:text-slate-900"
-      >
-        <span class="inline-flex items-center gap-2">
-          <span class="h-1.5 w-1.5 rounded-full opacity-80" style="background: var(--accent)"></span>
-          <span>Need help in {pretty}?</span>
-          <span class="text-slate-400 transition group-hover:translate-x-0.5" style="color: var(--accent)">›</span>
-        </span>
-      </a>
-    </div>
-
-    <PageHeader title={pretty} lead={subtitle || "Region hub page for BC real estate."} />
-
-    <PlaceImage
-      src={s(hero)}
-      alt={`${pretty}, British Columbia`}
-      fallbackText={`Photo of ${pretty} coming soon`}
+  <div style={accentStyle} class="w-full pt-6 pb-10">
+    <CrumbsBar
+      crumbs={crumbs}
+      helpLabel={`Need help in ${pretty}?`}
+      helpHref="/contact"
     />
 
-    <div class="my-6 flex flex-wrap gap-2">
+    <PageHeader title={pretty} lead={headerLead} />
+
+   <HeroImage
+  src={normalizeImgSrc(hero)}
+   alt={`${pretty}, British Columbia`}
+   fallbackText={`Photo of ${pretty} coming soon`}
+   mobileRatio="1:1"
+   priority={true}
+   class="mt-6 mb-4"
+ />
+
+    {/* pills (STICKY) */}
+    <div class="sticky-pills mb-3 flex flex-wrap gap-2">
       {pills.map((p) => (
         <a
           href={p.href}
@@ -191,69 +371,65 @@ const cityCount = cities.length;
       ))}
     </div>
 
-    <div class="grid gap-6 lg:grid-cols-12">
-      <aside class="lg:col-span-4 lg:sticky lg:top-8 space-y-6">
-        <div class="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600">
-          <span class="accent-dot h-2 w-2 rounded-full"></span>
-          Locked
-        </div>
-
-        <a href="#cities" class="block accent-hover rounded-2xl">
-          <StatCard
-            label="Cities"
-            value={cityCount ? String(cityCount) : "—"}
-            hint={cityCount ? "View city hubs ›" : "Coming soon"}
-          />
-        </a>
-
-        <a href="#overview" class="block accent-hover rounded-2xl">
-          <StatCard label="Market context" value="—" hint="Add stats later" />
-        </a>
-
-        <StatCard label="Listings" value="—" hint="Attach last" />
-      </aside>
-
-      <main class="lg:col-span-8 space-y-6">
-        <Card id="overview">
-          <div class="text-sm font-semibold text-slate-900">Overview</div>
+    {/* single column flow (match city page spacing) */}
+    <div class="space-y-6">
+      <div id="overview">
+        <Card class="overview-card">
+          <h2 class="text-base font-semibold text-slate-900">Overview</h2>
           <p class="mt-2 text-sm text-slate-600">
             {intro || "This page establishes the region before drilling into cities."}
           </p>
         </Card>
+      </div>
 
-        <Card id="cities">
-          <div class="text-sm font-semibold text-slate-900">Cities in {pretty}</div>
+     <section id="cities">
+  <h2 class="text-base font-semibold text-slate-900">Cities</h2>
 
-          {cityCount ? (
-            <div class="mt-5 grid gap-3 sm:grid-cols-2">
-              {cities.map((c) => (
-                <a
-                  href={`/cities/${c.slug}`}
-                  class="accent-hover block rounded-xl border border-slate-200 bg-white p-4 transition"
-                  title={`View ${c.name}`}
-                >
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <div class="text-sm font-semibold text-slate-900">{c.name}</div>
-                      <div class="mt-1 text-sm text-slate-600">{c.subtitle || "City hub"}</div>
-                    </div>
-                    <span class="text-slate-400">›</span>
-                  </div>
-                </a>
-              ))}
+  {cities.length ? (
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {cities.map((c) => (
+        <a
+          href={`/cities/${c.slug}`}
+          class="city-card accent-hover group block rounded-2xl border border-slate-200 p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md focus:outline-none"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <div class="city-title text-base font-semibold text-slate-900">
+                {c.name}
+              </div>
+              {c.subtitle ? (
+                <p class="mt-2 text-sm text-slate-600">{c.subtitle}</p>
+              ) : null}
             </div>
-          ) : (
-            <div class="mt-5 text-sm text-slate-600">No cities found.</div>
-          )}
-        </Card>
 
-        <Card id="next">
+            <span class="city-arrow text-xs font-medium text-slate-500">→</span>
+          </div>
+
+          <div class="mt-4 flex items-center gap-2 text-xs text-slate-600">
+            <span
+              class="h-2 w-2 rounded-full"
+              style="background: var(--accent);"
+              aria-hidden="true"
+            ></span>
+            <span>City hub</span>
+          </div>
+        </a>
+      ))}
+    </div>
+  ) : (
+    <div class="mt-4 text-sm text-slate-600">No cities found.</div>
+  )}
+</section>
+
+
+      <div id="next">
+        <Card>
           <div class="text-sm font-semibold text-slate-900">What’s next</div>
           <p class="mt-2 text-sm text-slate-600">
             Cities - neighbourhood hubs - market context - listings.
           </p>
         </Card>
-      </main>
+      </div>
     </div>
   </div>
 </Layout>

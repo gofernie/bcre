@@ -3,6 +3,7 @@ export const prerender = true;
 
 import Site from "../../layouts/Layout.astro";
 import PageHeader from "../../components/ui/PageHeader.astro";
+import CrumbsBar from "../../components/ui/CrumbsBar.astro";
 
 const pageTitle = "BC Real Estate Regions";
 const seoTitle = pageTitle;
@@ -38,6 +39,12 @@ function s(v: any): string {
 function norm(v: any): string {
   return s(v).toLowerCase();
 }
+
+/* ---------- crumbs ---------- */
+const crumbs = [
+  { label: "Home", href: "/" },
+  { label: "Regions", href: "/regions" },
+];
 
 /* ---------- load regions from Sheets ---------- */
 const url = import.meta.env.PUBLIC_REGIONS_JSON as string | undefined;
@@ -94,18 +101,10 @@ if (url) {
 
 <Site title={seoTitle} description={seoDesc}>
   {/* ✅ No mx-auto, no max-w-* here. Layout controls width. */}
-  <main class="w-full pb-16 pt-10">
-    {/* breadcrumb (city-style placement) */}
-    <div class="-mt-4 mb-5 flex items-start justify-between gap-6 text-sm text-slate-500">
-      <div class="min-w-0">
-        <a href="/" class="hover:text-slate-900">Home</a>
-        <span class="mx-2">/</span>
-        <span class="text-slate-900">Regions</span>
-      </div>
-
-      {/* spacer to match city-page rhythm */}
-      <div class="shrink-0 select-none opacity-0">Need help?</div>
-    </div>
+  {/* page padding contract: pt-6 (tight top), keep pb-16 (long index) */}
+  <main class="w-full pb-16 pt-6">
+    {/* merged crumbs bar */}
+    <CrumbsBar crumbs={crumbs} />
 
     {/* ✅ Constrain only intro text, not whole page width */}
     <div class="max-w-3xl">
@@ -183,28 +182,32 @@ if (url) {
         </div>
 
         <div class="mt-4 grid gap-4 md:grid-cols-3">
-          {regions.map((r) => (
-            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="text-base font-semibold text-slate-900">{r.name}</div>
-                  <p class="mt-2 text-sm text-slate-600">{r.desc}</p>
-                </div>
+        {regions.map((r) => (
+  <a
+    href={`/regions/${r.slug}`}
+    class="group block rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+  >
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="text-base font-semibold text-slate-900 group-hover:underline">
+          {r.name}
+        </div>
+        <p class="mt-2 text-sm text-slate-600">{r.desc}</p>
+      </div>
 
-                <a
-                  href={`/regions/${r.slug}`}
-                  class="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
-                >
-                  View
-                </a>
-              </div>
+      {/* optional visual affordance instead of button */}
+      <span class="text-xs font-medium text-slate-500 transition group-hover:text-slate-900">
+        →
+      </span>
+    </div>
 
-              <div class="mt-4 flex items-center gap-2 text-xs text-slate-600">
-                <span class={`h-2 w-2 rounded-full ${r.dotClass}`}></span>
-                <span>{r.meta}</span>
-              </div>
-            </div>
-          ))}
+    <div class="mt-4 flex items-center gap-2 text-xs text-slate-600">
+      <span class={`h-2 w-2 rounded-full ${r.dotClass}`}></span>
+      <span>{r.meta}</span>
+    </div>
+  </a>
+))}
+
         </div>
 
         <div id="expands" class="mt-8 rounded-2xl border border-slate-200 bg-white shadow-sm">
